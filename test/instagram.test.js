@@ -46,12 +46,18 @@ const HOME = PAGE(`
 </nav>
 <button id="openApp">Open app</button>
 <main><div id="feed">
-  <div class="row"><article id="aFriend"><header><a href="/u1/">u1</a></header><img><span>nice photo, follow your dreams</span></article></div>
-  <div class="row"><article id="aStranger"><header><a href="/u2/">u2</a><div role="button">Follow</div></header><img></article></div>
+  <div class="row"><article id="aFriend"><header><a href="/u1/">u1</a> <time datetime="2026-11-13T10:00:00Z">2h</time></header><img src="x.jpg"><span>nice photo, follow your dreams</span></article></div>
+  <div class="row"><article id="aStranger"><header><a href="/u2/">u2</a> <time datetime="2026-11-13T10:00:00Z">2h</time><div role="button">Follow</div></header><img src="x.jpg"></article></div>
   <div class="row"><article id="aAd"><header><a href="/u5/">u5</a><span>Sponsored</span></header><img></article></div>
   <div class="row"><article id="aSuggestedPost"><header><span>Suggested for you</span><a href="/u8/">u8</a></header><img></article></div>
   <div class="row" id="suggestBlock"><div><h2><span>Suggested for you</span></h2><div><a href="/u6/">u6</a><button>Follow</button></div></div></div>
-  <div class="row"><article id="aFriend2"><header><a href="/u3/">u3</a></header><video></video></article></div>
+  <div class="row"><article id="aFriend2"><header><a href="/u3/">u3</a> <time datetime="2026-11-13T10:00:00Z">2h</time></header><video></video></article></div>
+  <!-- Ad whose "Sponsored" label is split up with a hidden decoy letter -->
+  <div class="row"><article id="aAdSplit"><header><a href="/brand/">brand</a><span><span>Spo</span><span style="display:none">q</span><span>nsored</span></span></header><img src="x.jpg"></article></div>
+  <!-- Ad with no label at all: only giveaway is the missing date -->
+  <div class="row"><article id="aAdNoDate"><header><a href="/brand2/">brand2</a></header><img src="x.jpg"><a href="https://l.instagram.com/?u=shop">Shop now</a></article></div>
+  <!-- Suggestions block that isn't an <article>, label wrapped in extra elements -->
+  <div class="row" id="suggestBlock2"><div><div><span><span>Suggested</span> <span>reels</span></span><a href="/explore/">See all</a></div><div><a href="/reel/r1/">r</a><a href="/reel/r2/">r</a></div></div></div>
 </div></main>`);
 
 const EXPLORE = PAGE(`
@@ -83,6 +89,13 @@ function check(name, cond) {
   });
   await ctx.addInitScript(SCRIPT);
   const page = await ctx.newPage();
+
+  await ctx.addInitScript(() => {
+    new MutationObserver(() => {
+      const s = document.getElementById('igc-status');
+      if (s && s.textContent === 'Instagram Cleaner is on') window.__statusSeen = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
 
   // ---------- Home feed data ----------
   await page.goto('https://www.instagram.com/');
@@ -120,6 +133,7 @@ function check(name, cond) {
       friend: vis('aFriend'), friend2: vis('aFriend2'), stranger: vis('aStranger'), ad: vis('aAd'), sugPost: vis('aSuggestedPost'),
       sugBlock: vis('suggestBlock'), navReels: vis('navReels'), navHome: vis('navHome'), navExplore: vis('navExplore'),
       navDM: vis('navDM'), openApp: vis('openApp'), banner: !!document.querySelector('meta[name="apple-itunes-app"]'),
+      adSplit: vis('aAdSplit'), adNoDate: vis('aAdNoDate'), sugBlock2: vis('suggestBlock2'), status: window.__statusSeen,
     };
   });
   check('page: posts from people you follow visible (even with "follow" in the caption)', d.friend && d.friend2);
@@ -130,6 +144,23 @@ function check(name, cond) {
   check('page: Reels tab hidden', !d.navReels);
   check('page: Home, Search and Messages tabs still visible', d.navHome && d.navExplore && d.navDM);
   check('page: "Open app" button and Safari app banner tag removed', !d.openApp && !d.banner);
+  check('page: ad with a split-up "Sponsored" label hidden', !d.adSplit);
+  check('page: ad with no label (no post date) hidden', !d.adNoDate);
+  check('page: "Suggested reels" block with nested label hidden', !d.sugBlock2);
+  check('page: "Instagram Cleaner is on" message shown', d.status);
+
+  const safety = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        // Pretend Instagram stopped showing dates: posts must NOT be treated as ads.
+        document.querySelectorAll('time').forEach((t) => t.remove());
+        const fresh = document.createElement('div');
+        fresh.innerHTML = '<article id="aNoDates"><header><a href="/u9/">u9</a></header><img src="x.jpg"></article>';
+        document.getElementById('feed').appendChild(fresh);
+        setTimeout(() => resolve(!document.getElementById('aNoDates').closest('[data-igc-hidden]')), 1500);
+      })
+  );
+  check('safety: if Instagram shows no dates at all, posts are not hidden as ads', safety);
 
   // ---------- Profile page: someone you searched for ----------
   await page.goto('https://www.instagram.com/u2/');

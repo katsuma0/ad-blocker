@@ -113,6 +113,18 @@ Uses the same **Userscripts** app as Part 1. If you've already set it up for You
 
 **Tip:** to stop Instagram links opening in the app, delete the Instagram app, or press and hold a link and choose **Open in Safari**. You can add instagram.com to your Home Screen for quick access (Share → **Add to Home Screen**). Safari extensions don't run in Home Screen web apps, though, so open it in Safari itself to keep the filtering.
 
+### Still seeing ads or "Suggested for you"?
+When you open instagram.com, a small **"Instagram Cleaner is on"** message should appear at the top for a few seconds.
+
+**If you don't see that message, the script isn't running.** Check each of these:
+1. You're in **Safari** at instagram.com, not the Instagram app.
+2. **Settings → Apps → Safari → Extensions → Userscripts** is **On**, and **instagram.com** (or All Websites) is set to **Allow**.
+3. In Safari on instagram.com, tap **aA** → **Userscripts**. *Instagram Cleaner* should be listed with its switch on. If Safari shows a permission prompt there, choose **Always Allow on This Website**.
+4. In the Files app, the script's name ends in **.user.js**, not `.txt`, and it's inside the Userscripts folder.
+5. Swipe down to reload instagram.com.
+
+**If you do see the message but ads or suggestions still show up**, send a screenshot or tell me exactly what the label says, plus your Instagram language. Then I can match it.
+
 ### What you'll see
 | Where | What happens |
 |---|---|
@@ -129,7 +141,14 @@ Each part has its own switch at the top of the script. Set any of them to `false
 ### How it works
 1. **Cleans Instagram's data.** In every feed response, the script removes posts whose author you don't follow (`friendship_status.following === false`), ads (`ad_id`, `injected`, …) and suggestion blocks (`suggested_users`, `*_netego`, `explore_story`). This covers both `fetch` and XHR, including Instagram's `for (;;);`-prefixed and multi-line responses, plus data embedded in the page. If the follow status isn't known, the post is kept, so nothing is hidden by mistake. Your own posts are never hidden.
 2. **Redirects Reels.** `/reels/` goes to the home feed, and `/reels/<id>/` becomes `/reel/<id>/`, a single reel with nothing to swipe to.
-3. **Hides what's left on screen.** On the home feed it hides posts that show a **Follow** button (Instagram only shows one for accounts you don't follow), posts labelled **Sponsored** or **Suggested for you**, "Suggested for you" carousels, the Reels tab and the Explore grid.
+3. **Hides what's left on screen.** This works even if Instagram blocks the data cleaning. On the home feed it hides:
+   - posts that show a **Follow** button (Instagram only shows one for accounts you don't follow)
+   - posts labelled **Sponsored**, including labels split up with hidden letters
+   - ads with no label, spotted because they have no post date (only when other posts on the page show dates, so your feed can never be emptied by mistake)
+   - **Suggested for you / Suggested posts / Suggested reels** blocks
+   - the Reels tab and the Explore grid
+
+The script uses `@inject-into auto`. Normally it runs inside the page and does all three layers. If Instagram's security settings block that, Userscripts runs it alongside the page instead, and layers 2 and 3 still work.
 
 The on-screen rules look for Instagram's English labels ("Follow", "Sponsored", "Suggested for you"). If your Instagram is in another language, the data cleaning still works, but tell me your language and I'll add its labels.
 
