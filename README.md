@@ -47,6 +47,21 @@ Also on by default:
 
 If the Safari banner still appears, swipe down to reload the page once. To turn this off, change `const HIDE_OPEN_APP = true;` near the top of the script to `false`.
 
+### Extras: background play, picture-in-picture, sponsor skipping, HD, speed
+All on by default. Each has its own switch near the top of the script (set it to `false` to turn it off).
+
+| Feature | What it does | Switch |
+|---|---|---|
+| **Background play** | Audio keeps playing when you lock your phone or switch apps. If iOS still pauses it, press play once on the lock screen. | `BACKGROUND_PLAY` |
+| **Picture-in-picture** | Adds a small PiP button in the top-left corner of the video, so the video keeps playing in a floating window over other apps. | `PIP_BUTTON` |
+| **Skip sponsors** | Automatically skips sponsor reads, self-promotion and "like & subscribe" reminders, with a short "Skipped sponsor" message. Segments come from [SponsorBlock](https://sponsor.ajay.app), a free community database, so very new or small videos may not have any yet. Each segment is skipped once, so you can scrub back to watch it. | `SPONSORBLOCK` |
+| **Choose what to skip** | Also available: `'intro'`, `'outro'`, `'preview'`, `'filler'`, `'music_offtopic'`. | `SPONSORBLOCK_CATEGORIES` |
+| **Always HD** | Picks the best quality up to 1080p automatically. Mobile YouTube often starts blurry. Set it to `'highest'` for 4K, or `'hd720'` to save data. | `MAX_QUALITY` |
+| **Remember speed** | Change the speed once (for example 1.5x) and every video after that plays at that speed. | `REMEMBER_SPEED` |
+| **No "Continue watching?"** | YouTube won't pause long videos or playlists to ask if you're still there. | `NO_STILL_WATCHING` |
+
+**SponsorBlock privacy:** the script never sends which video you're watching. It sends only the first 4 characters of a hash of the video ID, gets back the segments for every video sharing that prefix, and picks out yours on your phone.
+
 ### How it works
 The script uses three layers, so an ad would have to get past all of them:
 1. **Removes ads from YouTube's data** before the player sees them. It strips `adPlacements`, `playerAds`, `adSlots` and promoted feed items from the page data and from every `/youtubei/v1/player`, `next`, `browse` and `search` response (both `fetch` and XHR). The player never learns there was an ad.
@@ -59,7 +74,7 @@ Shorts are handled the same way: they're removed from YouTube's data, hidden wit
 ```bash
 node test/test.js
 ```
-This runs the script in a headless browser that imitates an iPhone. It loads a fake m.youtube.com that serves ads and Shorts the way YouTube does (inline page data, fetch, XHR, an ad playing in the player, a skip button, the anti-adblock popup, Shorts shelves, the Shorts tab, a Shorts link, the "Open in app" banner tag and buttons) and checks that each one is blocked.
+This runs the script in a headless browser that imitates an iPhone. It loads a fake m.youtube.com that serves ads and Shorts the way YouTube does (inline page data, fetch, XHR, an ad playing in the player, a skip button, the anti-adblock popup, Shorts shelves, the Shorts tab, a Shorts link, the "Open in app" banner tag and buttons, a fake SponsorBlock server, a fake player for quality and speed, picture-in-picture, screen-lock events and the "Continue watching?" popup) and checks that each one is blocked.
 
 ### If YouTube changes something
 YouTube changes its ad system often. If ads come back:
@@ -87,7 +102,7 @@ This sends all DNS lookups over encrypted HTTPS to **AdGuard DNS** (a free publi
 
 ## Files
 ```
-youtube/youtube-adblock.user.js   YouTube ad + Shorts blocker (Safari, via the Userscripts app)
+youtube/youtube-adblock.user.js   YouTube ad + Shorts blocker and extras (Safari, via the Userscripts app)
 dns/AdBlock-DNS.mobileconfig      System-wide ad-blocking DNS profile
 test/test.js                      Automated test of the YouTube blocker
 ```
