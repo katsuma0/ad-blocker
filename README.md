@@ -40,6 +40,13 @@ Shorts are hidden by default. With the script on:
 
 To bring Shorts back, open the script in the Userscripts app, change `const HIDE_SHORTS = true;` near the top to `false`, and save.
 
+### Hiding "Open in the YouTube app"
+Also on by default:
+- Safari's **"Open in the YouTube app" banner** at the top of the page is removed. The script deletes the hidden `apple-itunes-app` tag that makes Safari show it.
+- YouTube's own **"Open App"** buttons and **"Get the YouTube app"** popups are hidden.
+
+If the Safari banner still appears, swipe down to reload the page once. To turn this off, change `const HIDE_OPEN_APP = true;` near the top of the script to `false`.
+
 ### How it works
 The script uses three layers, so an ad would have to get past all of them:
 1. **Removes ads from YouTube's data** before the player sees them. It strips `adPlacements`, `playerAds`, `adSlots` and promoted feed items from the page data and from every `/youtubei/v1/player`, `next`, `browse` and `search` response (both `fetch` and XHR). The player never learns there was an ad.
@@ -52,7 +59,7 @@ Shorts are handled the same way: they're removed from YouTube's data, hidden wit
 ```bash
 node test/test.js
 ```
-This runs the script in a headless browser that imitates an iPhone. It loads a fake m.youtube.com that serves ads and Shorts the way YouTube does (inline page data, fetch, XHR, an ad playing in the player, a skip button, the anti-adblock popup, Shorts shelves, the Shorts tab, a Shorts link) and checks that each one is blocked.
+This runs the script in a headless browser that imitates an iPhone. It loads a fake m.youtube.com that serves ads and Shorts the way YouTube does (inline page data, fetch, XHR, an ad playing in the player, a skip button, the anti-adblock popup, Shorts shelves, the Shorts tab, a Shorts link, the "Open in app" banner tag and buttons) and checks that each one is blocked.
 
 ### If YouTube changes something
 YouTube changes its ad system often. If ads come back:

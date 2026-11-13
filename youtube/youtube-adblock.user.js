@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Ad & Shorts Blocker (iPhone Safari)
 // @namespace    ad-blocker
-// @version      1.1.0
+// @version      1.2.0
 // @description  Removes video ads, feed ads, promoted content and (optionally) Shorts on YouTube in Safari for iPhone.
 // @match        *://m.youtube.com/*
 // @match        *://www.youtube.com/*
@@ -21,6 +21,8 @@
   // true  = hide YouTube Shorts everywhere and open any Shorts link as a normal video.
   // false = leave Shorts alone.
   const HIDE_SHORTS = true;
+  // true  = remove the "Open in the YouTube app" banner and "Open App" buttons/popups.
+  const HIDE_OPEN_APP = true;
   // ====================
 
   // ---------------------------------------------------------------------------
@@ -276,6 +278,8 @@
 
   function handleAd() {
     redirectShorts();
+    removeAppBanner();
+    hideOpenAppButtons();
     const player = document.querySelector('.html5-video-player, #movie_player');
     if (!player) return;
     const adPlaying = player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting');
@@ -356,6 +360,37 @@
     { display: none !important; }
   `;
 
+  const OPEN_APP_CSS = `
+    ytm-mealbar-promo-renderer, ytm-upsell-dialog-renderer, ytm-app-promo-renderer,
+    ytm-open-app-button, .mobile-topbar-header-open-app, .open-app-button,
+    a[href^="vnd.youtube:"], a[href^="youtube://"], a[href^="intent:"],
+    a[href*="apps.apple.com"], a[href*="itunes.apple.com"],
+    ytm-button-renderer:has(> a[href^="vnd.youtube:"]), ytm-button-renderer:has(> a[href^="youtube://"]),
+    ytm-button-renderer:has(a[href*="apps.apple.com"]), ytm-button-renderer:has(a[href*="itunes.apple.com"]),
+    [data-ytab-open-app]
+    { display: none !important; }
+  `;
+
+  // "Open App" / "Open in app" / "Get the app" style buttons, matched by their text.
+  const OPEN_APP_TEXT = /^\s*(open( in)?( the)?( youtube)? app|get( the)?( youtube)? app|use( the)? app|switch to( the)? app)\s*$/i;
+
+  // Safari shows its "Open in the YouTube app" banner because of this tag.
+  function removeAppBanner() {
+    if (!HIDE_OPEN_APP) return;
+    document.querySelectorAll('meta[name="apple-itunes-app"]').forEach((m) => m.remove());
+  }
+
+  function hideOpenAppButtons() {
+    if (!HIDE_OPEN_APP || !document.body) return;
+    document.querySelectorAll('button, a, [role="button"]').forEach((el) => {
+      if (el.hasAttribute('data-ytab-open-app')) return;
+      const text = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+      if (text.length > 30 || !OPEN_APP_TEXT.test(text)) return;
+      const wrap = el.closest('ytm-button-renderer, yt-button-view-model, button-view-model') || el;
+      wrap.setAttribute('data-ytab-open-app', '');
+    });
+  }
+
   // Open /shorts/VIDEO_ID as a normal video (no swipe-to-next-Short feed).
   function redirectShorts() {
     if (!HIDE_SHORTS) return;
@@ -367,7 +402,7 @@
     if (document.getElementById('ytab-style')) return;
     const style = document.createElement('style');
     style.id = 'ytab-style';
-    style.textContent = CSS + (HIDE_SHORTS ? SHORTS_CSS : '');
+    style.textContent = CSS + (HIDE_SHORTS ? SHORTS_CSS : '') + (HIDE_OPEN_APP ? OPEN_APP_CSS : '');
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -395,6 +430,17 @@
   }
 
   redirectShorts();
+  // Remove the app-banner tag the moment the page adds it, before Safari can act on it.
+  removeAppBanner();
+  if (HIDE_OPEN_APP && document.documentElement) {
+    const bannerObserver = new MutationObserver((muts) => {
+      for (const m of muts)
+        for (const n of m.addedNodes)
+          if (n.nodeName === 'META' && n.getAttribute('name') === 'apple-itunes-app') n.remove();
+    });
+    bannerObserver.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', () => setTimeout(() => bannerObserver.disconnect(), 5000), { once: true });
+  }
   if (document.documentElement) injectCSS();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, { once: true });

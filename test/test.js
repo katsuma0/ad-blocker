@@ -9,6 +9,8 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, '../youtube/youtube-adblock.
 
 // Tiny silent WebM-free "video": we fake duration via a data-driven stub instead of real media.
 const PAGE = `<!doctype html><html><head><meta name="viewport" content="width=device-width">
+<meta name="apple-itunes-app" content="app-id=544007664, app-argument=vnd.youtube://m.youtube.com/watch?v=abc">
+<script>document.addEventListener('DOMContentLoaded', () => { window.__bannerTagSeenByPage = !!document.querySelector('meta[name="apple-itunes-app"]'); });</script>
 <script>
   // Inline initial data, exactly like YouTube does it
   var ytInitialPlayerResponse = {
@@ -34,6 +36,12 @@ const PAGE = `<!doctype html><html><head><meta name="viewport" content="width=de
     { pivotBarItemRenderer: { pivotIdentifier: 'FEsubscriptions', navigationEndpoint: { browseEndpoint: { browseId: 'FEsubscriptions' } } } }
   ]}};
 </script></head><body>
+<header class="mobile-topbar-header">
+  <ytm-button-renderer id="openAppBtn"><button>Open App</button></ytm-button-renderer>
+  <ytm-button-renderer id="openAppLink"><a href="vnd.youtube://watch?v=abc">YouTube</a></ytm-button-renderer>
+  <ytm-button-renderer id="searchBtn"><button aria-label="Search YouTube">Search</button></ytm-button-renderer>
+</header>
+<ytm-mealbar-promo-renderer id="getAppPromo">Get the YouTube app</ytm-mealbar-promo-renderer>
 <div id="movie_player" class="html5-video-player"><video></video></div>
 <ytm-promoted-sparkles-web-renderer id="promo">AD</ytm-promoted-sparkles-web-renderer>
 <ytm-companion-ad-renderer id="companion">AD</ytm-companion-ad-renderer>
@@ -137,6 +145,23 @@ function check(name, cond) {
     real: getComputedStyle(document.getElementById('real')).display,
   }));
   check('ad elements hidden by CSS', hidden.promo === 'none' && hidden.comp === 'none');
+  const openApp = await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        setTimeout(() => {
+          const d = (id) => getComputedStyle(document.getElementById(id)).display;
+          resolve({
+            seenByPage: window.__bannerTagSeenByPage,
+            tagLeft: !!document.querySelector('meta[name="apple-itunes-app"]'),
+            btn: d('openAppBtn'), link: d('openAppLink'), promo: d('getAppPromo'), search: d('searchBtn'),
+          });
+        }, 700)
+      )
+  );
+  check('Safari "Open in app" banner tag already gone when the page finishes loading', openApp.seenByPage === false && !openApp.tagLeft);
+  check('"Open App" header button, app link and "Get the app" promo hidden', openApp.btn === 'none' && openApp.link === 'none' && openApp.promo === 'none');
+  check('other header buttons (Search) still visible', openApp.search !== 'none');
+
   const shortsDom = await page.evaluate(() => {
     const d = (id) => getComputedStyle(document.getElementById(id)).display;
     return { shelf: d('shortsShelf'), tab: d('shortsTab'), home: d('homeTab'), sr: d('shortResult'), vr: d('videoResult') };
