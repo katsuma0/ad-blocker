@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         Instagram Cleaner (iPhone Safari)
 // @namespace    ad-blocker
-// @version      1.0.0
+// @version      1.1.0
 // @description  Instagram in Safari with only accounts you follow: no Reels feed, no suggested posts, no ads, no Explore grid. Reels still work from search, people you follow, and DMs.
 // @match        *://www.instagram.com/*
 // @match        *://instagram.com/*
 // @run-at       document-start
-// @inject-into  page
+// @inject-into  auto
 // @grant        none
 // ==/UserScript==
 
@@ -29,6 +29,8 @@
   const HIDE_SUGGESTIONS = true;
   // true = remove the "Open in the Instagram app" banner and "Open app" / "Use the app" prompts.
   const HIDE_OPEN_APP = true;
+  // true = briefly show "Instagram Cleaner is on" when a page loads, so you know it's running.
+  const SHOW_STATUS = true;
   // ====================
 
   // Your own account ID (Instagram keeps it in a readable cookie), so your own posts are never hidden.
@@ -278,56 +280,119 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
-  const exact = (el) => (el.textContent || '').trim();
-  const SUGGESTION_TEXT = /^(suggested for you|suggested posts|suggested reels|suggestions for you|you might like|discover more)$/i;
+  // Text as it appears on screen. innerText skips hidden decoy letters, so a label split up
+  // like "Sp<hidden>x</hidden>onsored" still reads "Sponsored". Whitespace is squashed.
+  const shown = (el) => ((el.innerText != null ? el.innerText : el.textContent) || '').replace(/\s+/g, ' ').trim();
+  const raw = (el) => (el.textContent || '').trim();
+
+  const AD_TEXT = /^(sponsored|ad|ads|paid partnership with meta)$/i;
+  const SUGGESTION_TEXT =
+    /^(suggested for you|suggested posts|suggested post|suggested reels|suggested reel|suggestions for you|suggested accounts|suggested threads|you might like|discover more|recommended for you|based on your activity|more posts for you|popular on instagram|trending reels|reels for you)$/i;
   const OPEN_APP_TEXT = /^(open( in)?( the)?( instagram)? app|use( the)? app|get( the)? app|switch to( the)? app|open instagram)$/i;
 
   function hide(el) {
-    if (el && !el.hasAttribute('data-igc-hidden')) {
+    if (el && el !== document.body && el !== document.documentElement && !el.hasAttribute('data-igc-hidden')) {
       el.setAttribute('data-igc-hidden', '');
       removed++;
     }
   }
 
-  // Hide the whole feed block (e.g. a "Suggested for you" carousel) that contains `el`,
-  // by climbing up to the element that sits directly in the feed list.
+  const POST_SEL = 'article, div[role="article"]';
+
+  // The block (post, carousel, section) that `el` belongs to inside the feed list.
   function feedBlockOf(el) {
-    const article = document.querySelector('article:not([data-igc-hidden])') || document.querySelector('article');
-    if (!article) return el.closest('section, article, div[role="presentation"]') || el.parentElement;
-    const chain = new Set();
-    for (let a = article; a; a = a.parentElement) chain.add(a);
+    const post = el.closest(POST_SEL);
+    if (post) return post;
+    // Climb to the element that sits directly in the feed list next to real posts.
+    const anyPost = document.querySelector(POST_SEL);
+    if (anyPost) {
+      const chain = new Set();
+      for (let a = anyPost; a; a = a.parentElement) chain.add(a);
+      let cur = el;
+      while (cur.parentElement && !chain.has(cur.parentElement)) cur = cur.parentElement;
+      if (cur.parentElement && cur !== document.body) return cur;
+    }
+    // No posts on screen to compare with: climb until we reach a section with siblings,
+    // but never further than a reasonably sized block (so the whole page is never hidden).
     let cur = el;
-    while (cur.parentElement && !chain.has(cur.parentElement)) cur = cur.parentElement;
-    return cur.parentElement ? cur : el;
+    while (cur.parentElement && cur.parentElement !== document.body && cur.parentElement.tagName !== 'MAIN') {
+      const parent = cur.parentElement;
+      if (parent.childElementCount >= 3 && cur.getBoundingClientRect().height > 80) break;
+      cur = parent;
+    }
+    return cur;
+  }
+
+  // Short pieces of text inside `root` (labels, buttons), deepest first.
+  function labels(root) {
+    const out = [];
+    for (const el of root.querySelectorAll('span, div, a, button, h2, h3, h4, [aria-label]')) {
+      const t = raw(el);
+      if (t.length > 60) continue;
+      const aria = el.getAttribute('aria-label') || '';
+      if (!t && !aria) continue;
+      out.push(el);
+    }
+    return out;
+  }
+
+  function isFollowButton(el) {
+    const t = shown(el);
+    if (!/^follow$/i.test(t)) return false;
+    return el.tagName === 'BUTTON' || el.getAttribute('role') === 'button' || !!el.closest('button, [role="button"]');
+  }
+
+  let postsHaveDates = false;
+
+  function checkPost(art, home) {
+    let reason = null;
+    for (const el of labels(art)) {
+      const t = shown(el);
+      const aria = el.getAttribute('aria-label') || '';
+      if (HIDE_ADS && (AD_TEXT.test(t) || AD_TEXT.test(aria))) reason = 'ad';
+      else if (HIDE_SUGGESTIONS && SUGGESTION_TEXT.test(t)) reason = 'suggested';
+      // Instagram only shows a "Follow" button on posts from accounts you don't follow.
+      else if (home && ONLY_FOLLOWING_IN_FEED && isFollowButton(el)) reason = 'not-following';
+      if (reason) break;
+    }
+    // Ads have no post date. A loaded post on Home with media but no date is an ad.
+    // Only used when other posts on the page do show dates, so this can never empty your feed.
+    if (!reason && HIDE_ADS && home && postsHaveDates && !art.querySelector('time') && art.querySelector('img[src], video'))
+      reason = 'ad (no date)';
+    return reason;
   }
 
   function sweep() {
     routeCheck();
     if (!document.body) return;
     const home = onHomeFeed();
+    const inDMs = path().startsWith('/direct');
 
-    // Feed posts: hide sponsored, suggested, and (on Home) posts from accounts you don't follow.
-    document.querySelectorAll('article:not([data-igc-hidden])').forEach((art) => {
-      let drop = false;
-      for (const el of art.querySelectorAll('span, div, a, button')) {
-        if (el.childElementCount > 1) continue;
-        const t = exact(el);
-        if (!t || t.length > 30) continue;
-        if (HIDE_ADS && /^(sponsored|ad)$/i.test(t)) drop = true;
-        else if (HIDE_SUGGESTIONS && SUGGESTION_TEXT.test(t)) drop = true;
-        // Instagram shows a "Follow" button on posts from accounts you don't follow.
-        else if (home && ONLY_FOLLOWING_IN_FEED && /^follow$/i.test(t) && (el.tagName === 'BUTTON' || el.closest('button, [role="button"]') || el.getAttribute('role') === 'button'))
-          drop = true;
-        if (drop) break;
-      }
-      if (drop) hide(art);
-    });
+    // Feed posts: hide ads, suggested posts, and (on Home) posts from accounts you don't follow.
+    if (home) {
+      postsHaveDates = !!document.querySelector('article time, div[role="article"] time');
+      document.querySelectorAll(POST_SEL).forEach((art) => {
+        if (art.hasAttribute('data-igc-hidden') || art.parentElement.closest('[data-igc-hidden]')) return;
+        const reason = checkPost(art, home);
+        if (reason) {
+          hide(art);
+          art.setAttribute('data-igc-reason', reason);
+        }
+      });
+    }
 
-    // "Suggested for you" carousels and similar blocks between posts.
-    if (HIDE_SUGGESTIONS && home) {
-      document.querySelectorAll('span, h2, h3, div').forEach((el) => {
-        if (el.childElementCount > 1 || el.closest('[data-igc-hidden]')) return;
-        if (SUGGESTION_TEXT.test(exact(el))) hide(feedBlockOf(el));
+    // "Suggested for you" carousels and similar blocks, wherever they are (except your DMs).
+    if (!inDMs && (HIDE_SUGGESTIONS || HIDE_ADS)) {
+      document.querySelectorAll('span, h2, h3, h4, div').forEach((el) => {
+        if (el.closest('[data-igc-hidden]')) return;
+        const t = raw(el);
+        if (!t || t.length > 40) return;
+        const st = shown(el);
+        if ((HIDE_SUGGESTIONS && SUGGESTION_TEXT.test(st)) || (HIDE_ADS && home && AD_TEXT.test(st) && st.length > 2)) {
+          // Only act on the innermost element carrying the label.
+          for (const c of el.children) if (shown(c) === st) return;
+          hide(feedBlockOf(el));
+        }
       });
     }
 
@@ -335,10 +400,24 @@
       document.querySelectorAll('meta[name="apple-itunes-app"]').forEach((m) => m.remove());
       document.querySelectorAll('button, a, [role="button"]').forEach((el) => {
         if (el.hasAttribute('data-igc-hidden')) return;
-        const t = exact(el);
-        if (t.length <= 30 && OPEN_APP_TEXT.test(t)) hide(el);
+        const t = raw(el);
+        if (t.length <= 30 && OPEN_APP_TEXT.test(shown(el))) hide(el);
       });
     }
+  }
+
+  function showStatus() {
+    if (!SHOW_STATUS || !document.body || document.getElementById('igc-status')) return;
+    const el = document.createElement('div');
+    el.id = 'igc-status';
+    el.textContent = 'Instagram Cleaner is on';
+    el.style.cssText =
+      'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483647;' +
+      'background:rgba(20,20,20,.9);color:#fff;font:600 13px/1.2 -apple-system,system-ui,sans-serif;' +
+      'padding:8px 14px;border-radius:16px;pointer-events:none;transition:opacity .4s;';
+    document.body.appendChild(el);
+    setTimeout(() => (el.style.opacity = '0'), 2500);
+    setTimeout(() => el.remove(), 3000);
   }
 
   // Remove Safari's "Open in the Instagram app" banner tag as soon as it appears.
@@ -354,6 +433,7 @@
 
   function start() {
     injectCSS();
+    showStatus();
     sweep();
     let queued = false;
     new MutationObserver(() => {
@@ -363,7 +443,7 @@
         queued = false;
         sweep();
       }, 100);
-    }).observe(document.documentElement, { childList: true, subtree: true });
+    }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
     setInterval(() => {
       injectCSS();
       sweep();
@@ -375,5 +455,8 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
-  window.__igCleaner = { prune: safePrune, stats: () => ({ removed }) };
+  window.__igCleaner = {
+    prune: safePrune,
+    stats: () => ({ removed, hiddenOnScreen: document.querySelectorAll('[data-igc-hidden]').length }),
+  };
 })();
