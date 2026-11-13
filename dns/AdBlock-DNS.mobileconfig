@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>DNSSettings</key>
+			<dict>
+				<key>DNSProtocol</key>
+				<string>HTTPS</string>
+				<key>ServerURL</key>
+				<string>https://dns.adguard-dns.com/dns-query</string>
+				<key>ServerAddresses</key>
+				<array>
+					<string>94.140.14.14</string>
+					<string>94.140.15.15</string>
+					<string>2a10:50c0::ad1:ff</string>
+					<string>2a10:50c0::ad2:ff</string>
+				</array>
+			</dict>
+			<key>OnDemandRules</key>
+			<array>
+				<dict>
+					<key>Action</key>
+					<string>Connect</string>
+				</dict>
+			</array>
+			<key>PayloadDisplayName</key>
+			<string>Ad-blocking DNS (AdGuard DNS over HTTPS)</string>
+			<key>PayloadDescription</key>
+			<string>Blocks ad and tracker servers in every app and in Safari.</string>
+			<key>PayloadIdentifier</key>
+			<string>adblocker.dns.adguard.b30eef17</string>
+			<key>PayloadType</key>
+			<string>com.apple.dnsSettings.managed</string>
+			<key>PayloadUUID</key>
+			<string>B30EEF17-45A9-47AB-9BE1-1E239518E96F</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDisplayName</key>
+	<string>Ad Blocker DNS</string>
+	<key>PayloadDescription</key>
+	<string>Routes DNS through AdGuard's encrypted ad-blocking DNS so ad and tracking servers are blocked system-wide. Remove it anytime in Settings &gt; General &gt; VPN &amp; Device Management.</string>
+	<key>PayloadIdentifier</key>
+	<string>adblocker.profile.e6bfaf76</string>
+	<key>PayloadRemovalDisallowed</key>
+	<false/>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>E6BFAF76-9788-4C59-9F84-7282B3B318F8</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>
