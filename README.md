@@ -123,6 +123,8 @@ When you open instagram.com, a small **"Instagram Cleaner is on"** message shoul
 4. In the Files app, the script's name ends in **.user.js**, not `.txt`, and it's inside the Userscripts folder.
 5. Swipe down to reload instagram.com.
 
+**If an "Open" app banner is still at the very top**, check whether it has the Instagram app icon, a small **✕** on the left and a grey Safari-style look. If so, it's Safari's built-in banner, not part of the page. The script removes the tag that triggers it, but if Safari got to it first, tap **✕** and reload.
+
 **If you do see the message but ads or suggestions still show up**, send a screenshot or tell me exactly what the label says, plus your Instagram language. Then I can match it.
 
 ### What you'll see
@@ -134,6 +136,7 @@ When you open instagram.com, a small **"Instagram Cleaner is on"** message shoul
 | **Search** | Works normally: people, hashtags, and posts and reels you search for. The recommended grid under the search box is hidden. |
 | **Someone's profile** | Shows normally, even if you don't follow them, because you went there on purpose (from search or a link). |
 | **Messages** | Untouched. |
+| **"Open in app" / "Download now"** | Instagram's app banners (top and bottom) are removed. "Use the app" popups are closed with **Not now**. Safari's own app banner is suppressed too. |
 
 ### Settings
 Each part has its own switch at the top of the script. Set any of them to `false` to turn that part off: `HIDE_REELS_FEED`, `ONLY_FOLLOWING_IN_FEED`, `HIDE_EXPLORE_GRID`, `HIDE_ADS`, `HIDE_SUGGESTIONS`, `HIDE_OPEN_APP`.
