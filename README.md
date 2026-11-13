@@ -4,7 +4,7 @@ Two parts that together block as many ads on an iPhone as iOS allows. Neither on
 
 | Part | What it blocks | Where |
 |---|---|---|
-| **1. YouTube ad blocker** (`youtube/youtube-adblock.user.js`) | Pre-roll and mid-roll video ads, home and search feed ads, promoted videos, banners, "ad blockers aren't allowed" popups | **YouTube in Safari** |
+| **1. YouTube ad & Shorts blocker** (`youtube/youtube-adblock.user.js`) | Pre-roll and mid-roll video ads, home and search feed ads, promoted videos, banners, "ad blockers aren't allowed" popups, **and YouTube Shorts** | **YouTube in Safari** |
 | **2. Ad-blocking DNS** (`dns/AdBlock-DNS.mobileconfig`) | Ad and tracker servers (Google AdMob, Unity Ads, AppLovin, Facebook Audience Network, and many more) | **Every app** and Safari |
 
 ## Read this first: what iOS allows
@@ -32,17 +32,27 @@ So the plan is: **watch YouTube in Safari** (m.youtube.com), where part 1 remove
 
 **Tip:** to stop YouTube links opening in the app, press and hold a YouTube link and choose **Open in Safari**. Or delete the YouTube app so links always open in Safari.
 
+### Hiding YouTube Shorts
+Shorts are hidden by default. With the script on:
+- Shorts shelves and Shorts videos are removed from the home page, search results, watch suggestions and channel pages.
+- The **Shorts** tab is gone from the bottom bar (and from the sidebar and channel tabs on the desktop site).
+- Opening a Shorts link (for example one a friend sent) plays it as a normal video, so there's no endless swipe-to-the-next-Short feed.
+
+To bring Shorts back, open the script in the Userscripts app, change `const HIDE_SHORTS = true;` near the top to `false`, and save.
+
 ### How it works
 The script uses three layers, so an ad would have to get past all of them:
 1. **Removes ads from YouTube's data** before the player sees them. It strips `adPlacements`, `playerAds`, `adSlots` and promoted feed items from the page data and from every `/youtubei/v1/player`, `next`, `browse` and `search` response (both `fetch` and XHR). The player never learns there was an ad.
 2. **Skips ads instantly** if one still starts. It mutes the ad, jumps to the end, and clicks Skip. Sound and speed come back once the video resumes.
 3. **Hides ad elements** on the page with CSS (banners, companion ads, promoted cards, the anti-adblock dialog).
 
+Shorts are handled the same way: they're removed from YouTube's data, hidden with CSS, and `/shorts/` links are redirected to `/watch`.
+
 ### Testing
 ```bash
 node test/test.js
 ```
-This runs the script in a headless browser that imitates an iPhone. It loads a fake m.youtube.com that serves ads the way YouTube does (inline page data, fetch, XHR, an ad playing in the player, a skip button, the anti-adblock popup) and checks that each one is blocked.
+This runs the script in a headless browser that imitates an iPhone. It loads a fake m.youtube.com that serves ads and Shorts the way YouTube does (inline page data, fetch, XHR, an ad playing in the player, a skip button, the anti-adblock popup, Shorts shelves, the Shorts tab, a Shorts link) and checks that each one is blocked.
 
 ### If YouTube changes something
 YouTube changes its ad system often. If ads come back:
@@ -70,7 +80,7 @@ This sends all DNS lookups over encrypted HTTPS to **AdGuard DNS** (a free publi
 
 ## Files
 ```
-youtube/youtube-adblock.user.js   YouTube ad blocker (Safari, via the Userscripts app)
+youtube/youtube-adblock.user.js   YouTube ad + Shorts blocker (Safari, via the Userscripts app)
 dns/AdBlock-DNS.mobileconfig      System-wide ad-blocking DNS profile
 test/test.js                      Automated test of the YouTube blocker
 ```
