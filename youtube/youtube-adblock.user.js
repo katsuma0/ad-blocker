@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube Ad Blocker (iPhone Safari)
+// @name         YouTube Ad & Shorts Blocker (iPhone Safari)
 // @namespace    ad-blocker
-// @version      1.0.0
-// @description  Removes video ads, feed ads and promoted content on YouTube in Safari for iPhone.
+// @version      1.1.0
+// @description  Removes video ads, feed ads, promoted content and (optionally) Shorts on YouTube in Safari for iPhone.
 // @match        *://m.youtube.com/*
 // @match        *://www.youtube.com/*
 // @match        *://youtube.com/*
@@ -16,6 +16,12 @@
   'use strict';
   if (window.__ytAdBlockInstalled) return;
   window.__ytAdBlockInstalled = true;
+
+  // ===== SETTINGS =====
+  // true  = hide YouTube Shorts everywhere and open any Shorts link as a normal video.
+  // false = leave Shorts alone.
+  const HIDE_SHORTS = true;
+  // ====================
 
   // ---------------------------------------------------------------------------
   // Layer 1: strip ads out of YouTube's data before the player ever sees them.
@@ -80,13 +86,51 @@
     return false;
   }
 
+  // Shorts shelves, Shorts items, and the Shorts tab, as they appear in YouTube's data.
+  const SHORTS_RENDERERS = new Set([
+    'reelShelfRenderer',
+    'reelItemRenderer',
+    'shortsLockupViewModel',
+    'shortsLockupViewModelV2',
+  ]);
+
+  function hasShortsInside(obj, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 6) return false;
+    for (const k in obj) {
+      if (SHORTS_RENDERERS.has(k) || k === 'reelWatchEndpoint') return true;
+      if (hasShortsInside(obj[k], depth + 1)) return true;
+    }
+    return false;
+  }
+
+  function isShortsItem(item) {
+    if (!HIDE_SHORTS || !item || typeof item !== 'object') return false;
+    for (const k in item) {
+      const v = item[k];
+      if (SHORTS_RENDERERS.has(k)) return true;
+      if (!v || typeof v !== 'object') continue;
+      // Shelves of Shorts on the home page / search / channel pages.
+      if ((k === 'richSectionRenderer' || k === 'gridShelfViewModel') && hasShortsInside(v, 0)) return true;
+      if (k === 'richShelfRenderer' && (v.isShorts || hasShortsInside(v, 0))) return true;
+      if (k === 'richItemRenderer' && v.content && hasShortsInside(v.content, 0)) return true;
+      // A normal-looking video result that actually opens as a Short.
+      if ((k === 'videoRenderer' || k === 'compactVideoRenderer' || k === 'videoWithContextRenderer') &&
+          v.navigationEndpoint && v.navigationEndpoint.reelWatchEndpoint) return true;
+      // The "Shorts" tab in the bottom bar / sidebar / channel tabs.
+      if ((k === 'pivotBarItemRenderer' || k === 'guideEntryRenderer') &&
+          JSON.stringify(v).indexOf('FEshorts') >= 0) return true;
+      if (k === 'tabRenderer' && v.endpoint && JSON.stringify(v.endpoint).indexOf('/shorts') >= 0) return true;
+    }
+    return false;
+  }
+
   let removedCount = 0;
 
   function prune(obj, depth) {
     if (!obj || typeof obj !== 'object' || depth > 60) return obj;
     if (Array.isArray(obj)) {
       for (let i = obj.length - 1; i >= 0; i--) {
-        if (isAdItem(obj[i])) {
+        if (isAdItem(obj[i]) || isShortsItem(obj[i])) {
           obj.splice(i, 1);
           removedCount++;
         } else {
@@ -140,7 +184,7 @@
 
   // 1b. JSON.parse — catches data YouTube parses from strings (incl. embedded player config).
   const origParse = JSON.parse;
-  const AD_HINT = /adPlacements|adSlots|playerAds|adSlotRenderer|promoted|enforcementMessage|AdRenderer|PromoRenderer|statementBanner|searchPyv/;
+  const AD_HINT = /adPlacements|adSlots|playerAds|adSlotRenderer|promoted|enforcementMessage|AdRenderer|PromoRenderer|statementBanner|searchPyv|reelShelf|reelItem|shortsLockup|FEshorts|reelWatchEndpoint/;
   JSON.parse = function (text, reviver) {
     const result = origParse.call(this, text, reviver);
     if (typeof text === 'string' && text.length > 50 && AD_HINT.test(text)) safePrune(result);
@@ -231,6 +275,7 @@
   ].join(',');
 
   function handleAd() {
+    redirectShorts();
     const player = document.querySelector('.html5-video-player, #movie_player');
     if (!player) return;
     const adPlaying = player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting');
@@ -293,11 +338,36 @@
     { display: none !important; }
   `;
 
+  const SHORTS_CSS = `
+    ytm-reel-shelf-renderer, ytm-shorts-lockup-view-model, ytm-shorts-lockup-view-model-v2,
+    ytm-rich-section-renderer:has(ytm-shorts-lockup-view-model), ytm-rich-section-renderer:has(ytm-shorts-lockup-view-model-v2),
+    ytm-rich-section-renderer:has(ytm-reel-shelf-renderer), ytm-item-section-renderer:has(ytm-reel-shelf-renderer),
+    grid-shelf-view-model:has(ytm-shorts-lockup-view-model), grid-shelf-view-model:has(ytm-shorts-lockup-view-model-v2),
+    ytm-video-with-context-renderer:has(a[href^="/shorts/"]), ytm-compact-video-renderer:has(a[href^="/shorts/"]),
+    ytm-rich-item-renderer:has(a[href^="/shorts/"]),
+    ytm-pivot-bar-item-renderer:has(.pivot-shorts), ytm-pivot-bar-item-renderer:has(a[href^="/shorts"]),
+    yt-tab-shape[tab-title="Shorts"], ytm-chip-cloud-chip-renderer:has(a[href*="shorts"]),
+    ytd-reel-shelf-renderer, ytd-rich-shelf-renderer[is-shorts], ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
+    ytd-rich-section-renderer:has(ytm-shorts-lockup-view-model), ytd-rich-item-renderer:has(a[href^="/shorts/"]),
+    ytd-video-renderer:has(a[href^="/shorts/"]), ytd-grid-video-renderer:has(a[href^="/shorts/"]),
+    ytd-compact-video-renderer:has(a[href^="/shorts/"]),
+    ytd-guide-entry-renderer:has(a[title="Shorts"]), ytd-mini-guide-entry-renderer[aria-label="Shorts"],
+    yt-tab-shape[tab-title="Shorts"], ytd-item-section-renderer:has(ytd-reel-shelf-renderer)
+    { display: none !important; }
+  `;
+
+  // Open /shorts/VIDEO_ID as a normal video (no swipe-to-next-Short feed).
+  function redirectShorts() {
+    if (!HIDE_SHORTS) return;
+    const m = location.pathname.match(/^\/shorts\/([\w-]{5,})/);
+    if (m) location.replace('/watch?v=' + m[1]);
+  }
+
   function injectCSS() {
     if (document.getElementById('ytab-style')) return;
     const style = document.createElement('style');
     style.id = 'ytab-style';
-    style.textContent = CSS;
+    style.textContent = CSS + (HIDE_SHORTS ? SHORTS_CSS : '');
     (document.head || document.documentElement).appendChild(style);
   }
 
@@ -324,6 +394,7 @@
     }, 500);
   }
 
+  redirectShorts();
   if (document.documentElement) injectCSS();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, { once: true });

@@ -23,19 +23,40 @@ const PAGE = `<!doctype html><html><head><meta name="viewport" content="width=de
     { richItemRenderer: { content: { adSlotRenderer: { ad: 1 } } } },
     { promotedSparklesWebRenderer: { ad: 1 } },
     { richSectionRenderer: { content: { statementBannerRenderer: { ad: 1 } } } },
-    { richItemRenderer: { content: { videoRenderer: { videoId: 'v2' } } } }
+    { richItemRenderer: { content: { videoRenderer: { videoId: 'v2' } } } },
+    { richSectionRenderer: { content: { richShelfRenderer: { isShorts: true, contents: [{ richItemRenderer: { content: { shortsLockupViewModel: { id: 's1' } } } }] } } } },
+    { richItemRenderer: { content: { shortsLockupViewModel: { id: 's2' } } } },
+    { reelShelfRenderer: { items: [{ reelItemRenderer: { videoId: 's3' } }] } }
+  ]},
+  pivotBar: { items: [
+    { pivotBarItemRenderer: { pivotIdentifier: 'FEwhat_to_watch', navigationEndpoint: { browseEndpoint: { browseId: 'FEwhat_to_watch' } } } },
+    { pivotBarItemRenderer: { pivotIdentifier: 'FEshorts', navigationEndpoint: { browseEndpoint: { browseId: 'FEshorts' } } } },
+    { pivotBarItemRenderer: { pivotIdentifier: 'FEsubscriptions', navigationEndpoint: { browseEndpoint: { browseId: 'FEsubscriptions' } } } }
   ]}};
 </script></head><body>
 <div id="movie_player" class="html5-video-player"><video></video></div>
 <ytm-promoted-sparkles-web-renderer id="promo">AD</ytm-promoted-sparkles-web-renderer>
 <ytm-companion-ad-renderer id="companion">AD</ytm-companion-ad-renderer>
 <div id="real">real content</div>
+<ytm-reel-shelf-renderer id="shortsShelf">SHORTS</ytm-reel-shelf-renderer>
+<ytm-pivot-bar-item-renderer id="shortsTab"><div class="pivot-shorts">Shorts</div></ytm-pivot-bar-item-renderer>
+<ytm-pivot-bar-item-renderer id="homeTab"><div class="pivot-w2w">Home</div></ytm-pivot-bar-item-renderer>
+<ytm-video-with-context-renderer id="shortResult"><a href="/shorts/xyz12345678">a short</a></ytm-video-with-context-renderer>
+<ytm-video-with-context-renderer id="videoResult"><a href="/watch?v=xyz12345678">a video</a></ytm-video-with-context-renderer>
 </body></html>`;
 
 const PLAYER_API = {
   videoDetails: { videoId: 'next' },
   adPlacements: [{ x: 1 }],
   playerAds: [{ x: 1 }],
+};
+const SEARCH_API = {
+  contents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [
+    { videoRenderer: { videoId: 'normal1', navigationEndpoint: { watchEndpoint: { videoId: 'normal1' } } } },
+    { reelShelfRenderer: { items: [{ reelItemRenderer: { videoId: 'sh1' } }] } },
+    { videoRenderer: { videoId: 'short1', navigationEndpoint: { reelWatchEndpoint: { videoId: 'short1' } } } },
+    { videoRenderer: { videoId: 'normal2', navigationEndpoint: { watchEndpoint: { videoId: 'normal2' } } } },
+  ] } }] } },
 };
 const NEXT_API = {
   contents: {
@@ -61,6 +82,8 @@ function check(name, cond) {
     const u = route.request().url();
     if (u.includes('/youtubei/v1/player'))
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(PLAYER_API) });
+    if (u.includes('/youtubei/v1/search'))
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(SEARCH_API) });
     if (u.includes('/youtubei/v1/next'))
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(NEXT_API) });
     return route.fulfill({ contentType: 'text/html', body: PAGE });
@@ -78,7 +101,10 @@ function check(name, cond) {
   check('initial player response: playerAds removed', !('playerAds' in init.pr));
   check('initial player response: adSlots removed', !('adSlots' in init.pr));
   check('initial player response: real video kept', init.pr.videoDetails.videoId === 'abc' && init.pr.streamingData);
-  check('home feed: 3 ad items removed, 2 videos kept', init.feed.length === 2 && JSON.stringify(init.feed).indexOf('adSlot') < 0);
+  check('home feed: ads and Shorts removed, 2 videos kept', init.feed.length === 2 && JSON.stringify(init.feed).indexOf('adSlot') < 0);
+  check('home feed: no Shorts left', !/shortsLockup|reelShelf|reelItem/.test(JSON.stringify(init.feed)));
+  const tabs = await page.evaluate(() => window.ytInitialData.pivotBar.items.map((i) => i.pivotBarItemRenderer.pivotIdentifier));
+  check('bottom bar: Shorts tab removed, Home & Subscriptions kept', tabs.join() === 'FEwhat_to_watch,FEsubscriptions');
 
   const player = await page.evaluate(async () => (await fetch('/youtubei/v1/player?key=x', { method: 'POST' })).json());
   check('fetch /player: ads stripped', !player.adPlacements && !player.playerAds && player.videoDetails.videoId === 'next');
@@ -86,6 +112,10 @@ function check(name, cond) {
   const next = await page.evaluate(async () => (await fetch('/youtubei/v1/next')).json());
   check('fetch /next: promoted results removed', next.contents.results.length === 1);
   check('fetch /next: anti-adblock popup removed', !JSON.stringify(next).includes('enforcementMessage'));
+
+  const search = await page.evaluate(async () => (await fetch('/youtubei/v1/search')).json());
+  const ids = search.contents.sectionListRenderer.contents[0].itemSectionRenderer.contents.map((c) => c.videoRenderer && c.videoRenderer.videoId);
+  check('search: Shorts shelf and Short results removed, normal videos kept', ids.join() === 'normal1,normal2');
 
   const xhr = await page.evaluate(
     () =>
@@ -107,6 +137,12 @@ function check(name, cond) {
     real: getComputedStyle(document.getElementById('real')).display,
   }));
   check('ad elements hidden by CSS', hidden.promo === 'none' && hidden.comp === 'none');
+  const shortsDom = await page.evaluate(() => {
+    const d = (id) => getComputedStyle(document.getElementById(id)).display;
+    return { shelf: d('shortsShelf'), tab: d('shortsTab'), home: d('homeTab'), sr: d('shortResult'), vr: d('videoResult') };
+  });
+  check('Shorts shelf, Shorts tab and Short results hidden', shortsDom.shelf === 'none' && shortsDom.tab === 'none' && shortsDom.sr === 'none');
+  check('Home tab and normal video results still visible', shortsDom.home !== 'none' && shortsDom.vr !== 'none');
   check('real content still visible', hidden.real !== 'none');
 
   // Simulate an ad that still makes it into the player + a skip button.
@@ -151,6 +187,11 @@ function check(name, cond) {
       })
   );
   check('anti-adblock dialog removed from page', dialog);
+
+  // Opening a Shorts link should land on the normal video player instead.
+  await page.goto('https://m.youtube.com/shorts/dQw4w9WgXcQ');
+  await page.waitForURL(/watch\?v=/, { timeout: 5000 }).catch(() => {});
+  check('Shorts link opens as a normal video (/watch?v=…)', page.url() === 'https://m.youtube.com/watch?v=dQw4w9WgXcQ');
 
   await browser.close();
   console.log(failures ? `\n${failures} FAILED` : '\nAll tests passed');
