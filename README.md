@@ -1,21 +1,22 @@
 # iPhone Ad Blocker
 
-Two parts that together block as many ads on an iPhone as iOS allows. Neither one needs a Mac, a paid developer account, or jailbreaking.
+Three parts that together block as many ads and distractions on an iPhone as iOS allows. None of them needs a Mac, a paid developer account, or jailbreaking.
 
 | Part | What it blocks | Where |
 |---|---|---|
 | **1. YouTube ad & Shorts blocker** (`youtube/youtube-adblock.user.js`) | Pre-roll and mid-roll video ads, home and search feed ads, promoted videos, banners, "ad blockers aren't allowed" popups, **and YouTube Shorts** | **YouTube in Safari** |
 | **2. Ad-blocking DNS** (`dns/AdBlock-DNS.mobileconfig`) | Ad and tracker servers (Google AdMob, Unity Ads, AppLovin, Facebook Audience Network, and many more) | **Every app** and Safari |
+| **3. Instagram cleaner** (`instagram/instagram-cleaner.user.js`) | The Reels feed, suggested posts and reels, ads, "Suggested for you" and the Explore grid. Your feed shows only accounts you follow. | **Instagram in Safari** |
 
 ## Read this first: what iOS allows
 
 **No ad blocker can remove ads inside the YouTube or Instagram apps on a normal iPhone.** That includes this one and every App Store ad blocker.
 
 - **YouTube app:** ads come from the same Google servers as the videos, and iOS doesn't let other apps change what the YouTube app shows. Blocking the ads would also block the videos.
-- **Instagram app:** sponsored posts are ordinary posts sent from Instagram's own servers.
+- **Instagram app:** sponsored posts are ordinary posts sent from Instagram's own servers, so DNS blocking can't separate them. instagram.com in Safari can be cleaned up, though (Part 3).
 - **Other apps** (games, free utilities, and so on) usually load ads from separate ad networks. The DNS part blocks most of those.
 
-So the plan is: **watch YouTube in Safari** (m.youtube.com), where part 1 removes the ads, and use part 2 for everything else. The only official way to get an ad-free YouTube *app* is YouTube Premium.
+So the plan is: **use YouTube and Instagram in Safari** (m.youtube.com and instagram.com), where parts 1 and 3 clean them up, and use part 2 for everything else. The only official way to get an ad-free YouTube *app* is YouTube Premium.
 
 ---
 
@@ -100,9 +101,57 @@ This sends all DNS lookups over encrypted HTTPS to **AdGuard DNS** (a free publi
 
 ---
 
+## Part 3: Instagram with only people you follow, in Safari (about 2 minutes)
+
+Uses the same **Userscripts** app as Part 1. If you've already set it up for YouTube, skip to step 2.
+
+1. Set up Userscripts and turn on its Safari extension (Part 1, steps 1–3).
+2. Add the script the same way as the YouTube one. Either:
+   - download [`instagram/instagram-cleaner.user.js`](instagram/instagram-cleaner.user.js) and move it into your Userscripts folder in the Files app, or
+   - copy its text and paste it via Safari → **aA** → **Userscripts** → **+** → **New JS**.
+3. Open **instagram.com** in Safari and log in. If Safari asks whether Userscripts can access instagram.com, choose **Always Allow**.
+
+**Tip:** to stop Instagram links opening in the app, delete the Instagram app, or press and hold a link and choose **Open in Safari**. You can add instagram.com to your Home Screen for quick access (Share → **Add to Home Screen**). Safari extensions don't run in Home Screen web apps, though, so open it in Safari itself to keep the filtering.
+
+### What you'll see
+| Where | What happens |
+|---|---|
+| **Home feed** | Only posts and reels from accounts you follow, plus your own. Suggested posts, suggested reels, "Suggested for you" and ads are gone. |
+| **Reels tab** | Removed. Going to it takes you to your home feed. |
+| **A reel someone sends you** | Opens normally, on its own, so it doesn't drop you into the endless Reels feed. |
+| **Search** | Works normally: people, hashtags, and posts and reels you search for. The recommended grid under the search box is hidden. |
+| **Someone's profile** | Shows normally, even if you don't follow them, because you went there on purpose (from search or a link). |
+| **Messages** | Untouched. |
+
+### Settings
+Each part has its own switch at the top of the script. Set any of them to `false` to turn that part off: `HIDE_REELS_FEED`, `ONLY_FOLLOWING_IN_FEED`, `HIDE_EXPLORE_GRID`, `HIDE_ADS`, `HIDE_SUGGESTIONS`, `HIDE_OPEN_APP`.
+
+### How it works
+1. **Cleans Instagram's data.** In every feed response, the script removes posts whose author you don't follow (`friendship_status.following === false`), ads (`ad_id`, `injected`, …) and suggestion blocks (`suggested_users`, `*_netego`, `explore_story`). This covers both `fetch` and XHR, including Instagram's `for (;;);`-prefixed and multi-line responses, plus data embedded in the page. If the follow status isn't known, the post is kept, so nothing is hidden by mistake. Your own posts are never hidden.
+2. **Redirects Reels.** `/reels/` goes to the home feed, and `/reels/<id>/` becomes `/reel/<id>/`, a single reel with nothing to swipe to.
+3. **Hides what's left on screen.** On the home feed it hides posts that show a **Follow** button (Instagram only shows one for accounts you don't follow), posts labelled **Sponsored** or **Suggested for you**, "Suggested for you" carousels, the Reels tab and the Explore grid.
+
+The on-screen rules look for Instagram's English labels ("Follow", "Sponsored", "Suggested for you"). If your Instagram is in another language, the data cleaning still works, but tell me your language and I'll add its labels.
+
+### Testing
+```bash
+node test/instagram.test.js
+```
+This runs the script against a fake instagram.com and checks:
+- feed data: people you follow, strangers, your own posts, ads, suggestions, unknown follow status, `for (;;);` responses and embedded page data
+- the home-feed page
+- a profile you searched for
+- Explore and search
+- every Reels route, including in-app navigation
+- that Messages is untouched
+
+---
+
 ## Files
 ```
 youtube/youtube-adblock.user.js   YouTube ad + Shorts blocker and extras (Safari, via the Userscripts app)
 dns/AdBlock-DNS.mobileconfig      System-wide ad-blocking DNS profile
+instagram/instagram-cleaner.user.js  Instagram: only people you follow, no Reels feed (Safari, via Userscripts)
 test/test.js                      Automated test of the YouTube blocker
+test/instagram.test.js            Automated test of the Instagram cleaner
 ```
