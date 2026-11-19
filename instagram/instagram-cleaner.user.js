@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Instagram Cleaner (iPhone Safari)
 // @namespace    ad-blocker
-// @version      1.1.0
+// @version      1.2.0
 // @description  Instagram in Safari with only accounts you follow: no Reels feed, no suggested posts, no ads, no Explore grid. Reels still work from search, people you follow, and DMs.
 // @match        *://www.instagram.com/*
 // @match        *://instagram.com/*
@@ -288,7 +288,12 @@
   const AD_TEXT = /^(sponsored|ad|ads|paid partnership with meta)$/i;
   const SUGGESTION_TEXT =
     /^(suggested for you|suggested posts|suggested post|suggested reels|suggested reel|suggestions for you|suggested accounts|suggested threads|you might like|discover more|recommended for you|based on your activity|more posts for you|popular on instagram|trending reels|reels for you)$/i;
-  const OPEN_APP_TEXT = /^(open( in)?( the)?( instagram)? app|use( the)? app|get( the)? app|switch to( the)? app|open instagram)$/i;
+  // Buttons that push you to the Instagram app.
+  const OPEN_APP_TEXT =
+    /^(open( it)?( in)?( the)?( instagram)?( app)?( now)?|use( the)?( instagram)? app( now)?|get( the)?( instagram)? app( now)?|download( the)?( instagram)?( app)?( now)?|install( the)?( instagram)?( app)?( now)?|switch to( the)? app|continue in( the)? app|view in( the)? app|see (it|this|more) in( the)? app|open instagram( app)?|get instagram|get the full experience)$/i;
+  // Text on the banner/popup itself.
+  const APP_PROMO_TEXT = /(get the (full )?(instagram )?(app|experience)|instagram is better on the app|see more (posts )?(in|on) the app|continue (in|on) the app|use the app|download (the )?instagram|open (in )?(the )?(instagram )?app)/i;
+  const DISMISS_TEXT = /^(not now|close|cancel|no thanks|dismiss|maybe later|continue on web|stay on web|use (the )?(mobile )?web(site)?)$/i;
 
   function hide(el) {
     if (el && el !== document.body && el !== document.documentElement && !el.hasAttribute('data-igc-hidden')) {
@@ -396,14 +401,63 @@
       });
     }
 
-    if (HIDE_OPEN_APP) {
-      document.querySelectorAll('meta[name="apple-itunes-app"]').forEach((m) => m.remove());
-      document.querySelectorAll('button, a, [role="button"]').forEach((el) => {
-        if (el.hasAttribute('data-igc-hidden')) return;
-        const t = raw(el);
-        if (t.length <= 30 && OPEN_APP_TEXT.test(shown(el))) hide(el);
-      });
+    if (HIDE_OPEN_APP && !inDMs) removeAppPrompts();
+  }
+
+  // ---- "Open in app" / "Download now" banners and popups -----------------------------
+
+  // Instagram's own navigation (Home, Search, Messages, Notifications...). Never hide it.
+  const NAV_SEL =
+    'a[href="/"], a[href^="/direct"], a[href^="/explore"], a[href*="/accounts/activity"], a[href="/reels/"], ' +
+    'svg[aria-label="Home"], svg[aria-label="Messenger"], svg[aria-label="Direct"], svg[aria-label="Notifications"], ' +
+    'svg[aria-label="New post"], svg[aria-label="Search"], svg[aria-label="Activity Feed"]';
+
+  function isAppButton(el) {
+    const t = raw(el);
+    if (t.length > 40 && !el.getAttribute('aria-label')) return false;
+    const st = shown(el) || el.getAttribute('aria-label') || '';
+    if (OPEN_APP_TEXT.test(st)) return true;
+    const href = el.getAttribute('href') || '';
+    return /apps\.apple\.com|itunes\.apple\.com|^instagram:\/\/|^itms-apps:|app\.link|\/download\/?(\?|$)/i.test(href);
+  }
+
+  // The whole banner around an "Open app" button: the fixed/sticky bar, or the slim
+  // full-width strip, that holds it. Never Instagram's own nav bar.
+  function bannerOf(btn) {
+    const vw = window.innerWidth || 400;
+    let best = btn;
+    for (let cur = btn.parentElement, i = 0; cur && cur !== document.body && i < 8; cur = cur.parentElement, i++) {
+      if (cur.tagName === 'MAIN' || cur.tagName === 'ARTICLE') break;
+      if (cur.querySelector(NAV_SEL)) break; // reached the nav bar: hide only what's inside it
+      const r = cur.getBoundingClientRect();
+      if (r.height > 200) break; // bigger than any banner: stop
+      best = cur;
+      const pos = getComputedStyle(cur).position;
+      if (pos === 'fixed' || pos === 'sticky') return cur; // the banner bar itself
+      if (r.width >= vw * 0.9 && r.height >= 30 && APP_PROMO_TEXT.test(shown(cur) + ' ' + raw(cur))) return cur;
     }
+    return best;
+  }
+
+  function removeAppPrompts() {
+    document.querySelectorAll('meta[name="apple-itunes-app"]').forEach((m) => m.remove());
+    document.querySelectorAll('button, a, [role="button"], [role="link"]').forEach((el) => {
+      if (el.closest('[data-igc-hidden]') || !isAppButton(el)) return;
+      // A popup asking you to use the app: tap its "Not now" / close button.
+      const dialog = el.closest('[role="dialog"], [role="alertdialog"], dialog');
+      if (dialog) {
+        const dismiss = Array.from(dialog.querySelectorAll('button, [role="button"], a')).find(
+          (b) => b !== el && (DISMISS_TEXT.test(shown(b)) || /^(close|dismiss)$/i.test(b.getAttribute('aria-label') || '') || !!b.querySelector('svg[aria-label="Close"]'))
+        );
+        if (dismiss) {
+          dismiss.click();
+          return;
+        }
+        // Never hide a login form: just remove the app link inside it.
+        return hide(dialog.querySelector('input[type="password"]') ? el : dialog);
+      }
+      hide(bannerOf(el));
+    });
   }
 
   function showStatus() {

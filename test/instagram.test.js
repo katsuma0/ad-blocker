@@ -45,6 +45,17 @@ const HOME = PAGE(`
   <a id="navProfile" href="/u1000/">Profile</a>
 </nav>
 <button id="openApp">Open app</button>
+<div id="topNav" style="position:fixed;top:0;left:0;right:0;height:44px">
+  <span>Instagram</span><a href="/accounts/activity/">Notifications</a><a href="/direct/inbox/">DM</a>
+  <button id="navOpenApp">Open in app now</button>
+</div>
+<div id="topBanner" style="position:sticky;top:0;height:56px"><div><img src="icon.png"><span>Instagram</span><span>Open in app</span></div><a id="topBannerBtn" href="https://app.link/x">Open</a></div>
+<div id="bottomBanner" style="position:fixed;bottom:0;left:0;right:0;height:64px">
+  <div><img src="icon.png"><div><span>Instagram</span><span>Get the full experience</span></div></div>
+  <a href="https://apps.apple.com/app/instagram/id389801252"><span>Download now</span></a>
+</div>
+<div role="dialog" id="appDialog"><span>See more on the app</span><button>Open Instagram</button><button id="notNow">Not now</button></div>
+<div role="dialog" id="loginDialog"><input type="password"><button>Log in</button><a href="https://apps.apple.com/app/id389801252">Get the app</a></div>
 <main><div id="feed">
   <div class="row"><article id="aFriend"><header><a href="/u1/">u1</a> <time datetime="2026-11-13T10:00:00Z">2h</time></header><img src="x.jpg"><span>nice photo, follow your dreams</span></article></div>
   <div class="row"><article id="aStranger"><header><a href="/u2/">u2</a> <time datetime="2026-11-13T10:00:00Z">2h</time><div role="button">Follow</div></header><img src="x.jpg"></article></div>
@@ -97,6 +108,10 @@ function check(name, cond) {
     }).observe(document, { childList: true, subtree: true });
   });
 
+  await ctx.addInitScript(() => {
+    document.addEventListener('click', (e) => { if (e.target && e.target.id === 'notNow') window.__notNow = true; }, true);
+  });
+
   // ---------- Home feed data ----------
   await page.goto('https://www.instagram.com/');
   const codes = (feed) => feed.data.xdt_api__v1__feed__timeline__connection.edges.map((e) => e.node.media && e.node.media.code);
@@ -133,6 +148,8 @@ function check(name, cond) {
       friend: vis('aFriend'), friend2: vis('aFriend2'), stranger: vis('aStranger'), ad: vis('aAd'), sugPost: vis('aSuggestedPost'),
       sugBlock: vis('suggestBlock'), navReels: vis('navReels'), navHome: vis('navHome'), navExplore: vis('navExplore'),
       navDM: vis('navDM'), openApp: vis('openApp'), banner: !!document.querySelector('meta[name="apple-itunes-app"]'),
+      topNav: vis('topNav'), navOpenApp: vis('navOpenApp'), topBanner: vis('topBanner'), bottomBanner: vis('bottomBanner'),
+      notNowClicked: window.__notNow === true, loginDialog: vis('loginDialog'),
       adSplit: vis('aAdSplit'), adNoDate: vis('aAdNoDate'), sugBlock2: vis('suggestBlock2'), status: window.__statusSeen,
     };
   });
@@ -144,6 +161,11 @@ function check(name, cond) {
   check('page: Reels tab hidden', !d.navReels);
   check('page: Home, Search and Messages tabs still visible', d.navHome && d.navExplore && d.navDM);
   check('page: "Open app" button and Safari app banner tag removed', !d.openApp && !d.banner);
+  check('"Download now" banner at the bottom: whole banner hidden', !d.bottomBanner);
+  check('"Open in app" banner at the top: whole banner hidden', !d.topBanner);
+  check('"Open in app now" button in the top bar hidden, top bar itself kept', !d.navOpenApp && d.topNav);
+  check('"Use the app" popup closed with "Not now"', d.notNowClicked);
+  check('login popup never hidden', d.loginDialog);
   check('page: ad with a split-up "Sponsored" label hidden', !d.adSplit);
   check('page: ad with no label (no post date) hidden', !d.adNoDate);
   check('page: "Suggested reels" block with nested label hidden', !d.sugBlock2);
